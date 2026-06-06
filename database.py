@@ -8,7 +8,7 @@ _url = os.getenv("DATABASE_URL", "sqlite:///./storage.db")
 if _url.startswith("postgres://"):
     _url = _url.replace("postgres://", "postgresql://", 1)
 
-_kwargs = {} if _url.startswith("postgresql") else {"check_same_thread": False}
+_kwargs = {} if _url.startswith("postgresql") else {"connect_args": {"check_same_thread": False}}
 
 engine = create_engine(_url, **_kwargs)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
