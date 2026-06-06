@@ -8,7 +8,8 @@ from sqlalchemy.orm import Session
 from database import get_db
 import models
 
-SECRET_KEY = "CHANGE_ME_IN_PRODUCTION_USE_A_LONG_RANDOM_STRING"
+import os
+SECRET_KEY = os.getenv("SECRET_KEY", "CHANGE_ME_IN_PRODUCTION_USE_A_LONG_RANDOM_STRING")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24h
 
