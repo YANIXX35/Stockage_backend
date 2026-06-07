@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -65,7 +65,7 @@ def _send_reset_email(to_email: str, code: str) -> None:
 
 
 @router.post("/send-otp")
-def send_otp(data: schemas.OtpRequest, db: Session = Depends(get_db)):
+def send_otp(data: schemas.OtpRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     if db.query(models.User).filter(models.User.email == data.email).first():
         raise HTTPException(status_code=400, detail="Email déjà utilisé")
 
@@ -75,10 +75,7 @@ def send_otp(data: schemas.OtpRequest, db: Session = Depends(get_db)):
         "expires_at": datetime.utcnow() + timedelta(minutes=10),
     }
 
-    try:
-        _send_otp_email(data.email, code)
-    except Exception:
-        raise HTTPException(status_code=500, detail="Impossible d'envoyer l'email. Vérifiez l'adresse.")
+    background_tasks.add_task(_send_otp_email, data.email, code)
 
     return {"message": "Code envoyé"}
 
@@ -123,10 +120,9 @@ def login(data: schemas.UserLogin, db: Session = Depends(get_db)):
 
 
 @router.post("/forgot-password")
-def forgot_password(data: schemas.ForgotPasswordRequest, db: Session = Depends(get_db)):
+def forgot_password(data: schemas.ForgotPasswordRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     user = db.query(models.User).filter(models.User.email == data.email).first()
     if not user:
-        # Ne pas révéler si l'email existe ou non
         return {"message": "Si cet email est enregistré, un code a été envoyé"}
 
     code = str(random.randint(100000, 999999))
@@ -135,10 +131,7 @@ def forgot_password(data: schemas.ForgotPasswordRequest, db: Session = Depends(g
         "expires_at": datetime.utcnow() + timedelta(minutes=10),
     }
 
-    try:
-        _send_reset_email(data.email, code)
-    except Exception:
-        raise HTTPException(status_code=500, detail="Impossible d'envoyer l'email")
+    background_tasks.add_task(_send_reset_email, data.email, code)
 
     return {"message": "Code envoyé"}
 
