@@ -94,3 +94,17 @@ class ShareOut(BaseModel):
 # ── ADMIN ─────────────────────────────────────────────────
 class QuotaUpdate(BaseModel):
     quota_max: int
+
+class UserCreate(BaseModel):
+    email: str
+    nom: str
+    prenom: str
+    password: str
+    quota_max: int = 2 * 1024 * 1024 * 1024
+
+class UserUpdate(BaseModel):
+    nom: Optional[str] = None
+    prenom: Optional[str] = None
+    email: Optional[str] = None
+    quota_max: Optional[int] = None
+    is_admin: Optional[bool] = None
