@@ -84,6 +84,7 @@ class FileOut(BaseModel):
     type_mime: str
     taille: int
     folder_id: Optional[int]
+    cloudinary_url: Optional[str] = None
     is_deleted: bool
     created_at: datetime
 

@@ -4,6 +4,7 @@ from typing import List
 from database import get_db
 import models, schemas, auth as auth_utils
 from auth import get_current_user, require_admin
+import cloudinary_service
 
 router = APIRouter(prefix="/api/users", tags=["Users"])
 
@@ -61,6 +62,30 @@ def delete_user(
         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
     if user.is_admin:
         raise HTTPException(status_code=403, detail="Impossible de supprimer un admin")
+
+    # 1. Récupérer les IDs des fichiers pour nettoyer les share_links
+    files = db.query(models.File).filter(models.File.user_id == user_id).all()
+    file_ids = [f.id for f in files]
+
+    # 2. Supprimer les share_links pointant vers ces fichiers
+    if file_ids:
+        db.query(models.ShareLink).filter(
+            models.ShareLink.file_id.in_(file_ids)
+        ).delete(synchronize_session=False)
+
+    # 3. Supprimer les fichiers de Cloudinary et de la DB
+    for f in files:
+        if f.nom_stockage:
+            cloudinary_service.delete_file(f.nom_stockage, f.type_mime)
+        db.delete(f)
+
+    # 4. Supprimer les dossiers (nullifier d'abord les parent_id pour éviter la contrainte auto-référentielle)
+    db.query(models.Folder).filter(models.Folder.user_id == user_id).update(
+        {"parent_id": None}, synchronize_session=False
+    )
+    db.query(models.Folder).filter(models.Folder.user_id == user_id).delete(synchronize_session=False)
+
+    # 5. Supprimer l'utilisateur
     db.delete(user)
     db.commit()
     return {"message": "Utilisateur supprimé"}

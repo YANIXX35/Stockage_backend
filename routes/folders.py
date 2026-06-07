@@ -4,8 +4,34 @@ from typing import List, Optional
 from database import get_db
 import models, schemas
 from auth import get_current_user
+import cloudinary_service
 
 router = APIRouter(prefix="/api/folders", tags=["Folders"])
+
+
+def _delete_folder_cascade(folder_id: int, user_id: int, db: Session) -> int:
+    """Supprime récursivement un dossier et tout son contenu. Retourne le quota libéré."""
+    freed = 0
+    files = db.query(models.File).filter(
+        models.File.folder_id == folder_id,
+        models.File.user_id == user_id
+    ).all()
+    for f in files:
+        # Supprimer les share_links liés
+        db.query(models.ShareLink).filter(models.ShareLink.file_id == f.id).delete(synchronize_session=False)
+        if f.nom_stockage:
+            cloudinary_service.delete_file(f.nom_stockage, f.type_mime)
+        freed += f.taille
+        db.delete(f)
+
+    sub_folders = db.query(models.Folder).filter(
+        models.Folder.parent_id == folder_id
+    ).all()
+    for sub in sub_folders:
+        freed += _delete_folder_cascade(sub.id, user_id, db)
+        db.delete(sub)
+
+    return freed
 
 
 @router.post("", response_model=schemas.FolderOut)
@@ -87,6 +113,8 @@ def delete_folder(
     ).first()
     if not folder:
         raise HTTPException(status_code=404, detail="Dossier introuvable")
+    freed = _delete_folder_cascade(folder_id, user.id, db)
     db.delete(folder)
+    user.quota_used = max(0, user.quota_used - freed)
     db.commit()
     return {"message": "Dossier supprimé"}

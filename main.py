@@ -1,9 +1,12 @@
 import os
+import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from database import engine, Base, SessionLocal
 import models
+
+logger = logging.getLogger(__name__)
 
 from routes import auth, files, folders, users, share
 import cloudinary_service
@@ -62,6 +65,10 @@ app.include_router(share.router)
 
 @app.on_event("startup")
 def on_startup():
+    _secret = os.getenv("SECRET_KEY", "CHANGE_ME_IN_PRODUCTION_USE_A_LONG_RANDOM_STRING")
+    if _secret == "CHANGE_ME_IN_PRODUCTION_USE_A_LONG_RANDOM_STRING":
+        logger.warning("⚠️  SECRET_KEY non définie — configurez-la dans les variables d'env Render !")
+
     # Ajout de la colonne cloudinary_url si elle n'existe pas encore
     with engine.connect() as conn:
         conn.execute(text(
