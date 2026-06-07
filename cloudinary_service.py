@@ -1,6 +1,7 @@
 import os
 import cloudinary
 import cloudinary.uploader
+import cloudinary.api
 
 cloudinary.config(
     cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
@@ -8,6 +9,26 @@ cloudinary.config(
     api_secret=os.getenv("CLOUDINARY_API_SECRET"),
     secure=True,
 )
+
+UPLOAD_PRESET = "storage_unsigned"
+
+
+def ensure_upload_preset() -> None:
+    """Crée le preset d'upload non signé s'il n'existe pas."""
+    cfg = cloudinary.config()
+    if not cfg.cloud_name or not cfg.api_key:
+        return
+    try:
+        cloudinary.api.upload_preset(UPLOAD_PRESET)
+    except Exception:
+        try:
+            cloudinary.api.create_upload_preset(
+                name=UPLOAD_PRESET,
+                unsigned=True,
+                use_filename=False,
+            )
+        except Exception:
+            pass
 
 
 def _resource_type(mime_type: str) -> str:

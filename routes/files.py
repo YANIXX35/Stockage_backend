@@ -3,6 +3,7 @@ import uuid
 from datetime import datetime
 from typing import List, Optional
 
+import cloudinary
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File as FastAPIFile
 from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy.orm import Session
@@ -20,6 +21,50 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 def _local_path(user_id: int, nom_stockage: str) -> str:
     return os.path.join(UPLOAD_DIR, str(user_id), nom_stockage)
+
+
+@router.get("/cloudinary-config")
+def cloudinary_config(_: models.User = Depends(get_current_user)):
+    """Renvoie cloud_name + upload_preset pour l'upload direct navigateur → Cloudinary."""
+    cfg = cloudinary.config()
+    if not cfg.cloud_name:
+        raise HTTPException(status_code=503, detail="Cloudinary non configuré")
+    return {"cloud_name": cfg.cloud_name, "upload_preset": cloudinary_service.UPLOAD_PRESET}
+
+
+@router.post("/register", response_model=schemas.FileOut)
+def register_file(
+    data: schemas.FileRegister,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    """Enregistre un fichier déjà uploadé sur Cloudinary (sans retransférer le contenu)."""
+    if data.folder_id:
+        folder = db.query(models.Folder).filter(
+            models.Folder.id == data.folder_id,
+            models.Folder.user_id == user.id,
+        ).first()
+        if not folder:
+            raise HTTPException(status_code=404, detail="Dossier introuvable")
+
+    if user.quota_used + data.taille > user.quota_max:
+        cloudinary_service.delete_file(data.public_id, data.type_mime)
+        raise HTTPException(status_code=400, detail="Quota de stockage dépassé")
+
+    db_file = models.File(
+        nom_original=data.nom_original,
+        nom_stockage=data.public_id,
+        type_mime=data.type_mime,
+        taille=data.taille,
+        user_id=user.id,
+        folder_id=data.folder_id,
+        cloudinary_url=data.cloudinary_url,
+    )
+    db.add(db_file)
+    user.quota_used += data.taille
+    db.commit()
+    db.refresh(db_file)
+    return db_file
 
 
 @router.post("/upload", response_model=List[schemas.FileOut])

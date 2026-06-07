@@ -6,19 +6,17 @@ from database import engine, Base, SessionLocal
 import models
 
 from routes import auth, files, folders, users, share
+import cloudinary_service
+from config import ADMIN_EMAIL, ADMIN_QUOTA
 
 Base.metadata.create_all(bind=engine)
 
-ADMIN_QUOTA = 100 * 1024 * 1024 * 1024  # 100 Go
 
 def _promote_first_admin():
-    email = os.getenv("FIRST_ADMIN_EMAIL", "").strip().lower()
-    if not email:
-        return
     db = SessionLocal()
     try:
         user = db.query(models.User).filter(
-            models.User.email.ilike(email)
+            models.User.email.ilike(ADMIN_EMAIL)
         ).first()
         if user:
             changed = False
@@ -71,6 +69,7 @@ def on_startup():
         ))
         conn.commit()
     _promote_first_admin()
+    cloudinary_service.ensure_upload_preset()
 
 
 @app.get("/")

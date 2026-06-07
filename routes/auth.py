@@ -1,6 +1,6 @@
-import os
 import random
 import smtplib
+import os
 from datetime import datetime, timedelta
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 import models, schemas, auth as auth_utils
+from config import ADMIN_EMAIL, ADMIN_QUOTA
 
 router = APIRouter(prefix="/api/auth", tags=["Auth"])
 
@@ -116,16 +117,14 @@ def login(data: schemas.UserLogin, db: Session = Depends(get_db)):
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Compte suspendu")
 
-    # Auto-promote le compte admin configuré (insensible à la casse)
-    first_admin = os.getenv("FIRST_ADMIN_EMAIL", "").strip().lower()
-    if first_admin and user.email.strip().lower() == first_admin:
-        admin_quota = 100 * 1024 * 1024 * 1024
+    # Auto-promote le compte admin
+    if user.email.strip().lower() == ADMIN_EMAIL:
         changed = False
         if not user.is_admin:
             user.is_admin = True
             changed = True
-        if user.quota_max < admin_quota:
-            user.quota_max = admin_quota
+        if user.quota_max < ADMIN_QUOTA:
+            user.quota_max = ADMIN_QUOTA
             changed = True
         if changed:
             db.commit()

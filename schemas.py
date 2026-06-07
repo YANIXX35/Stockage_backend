@@ -69,6 +69,15 @@ class FolderOut(BaseModel):
 
 
 # ── FILES ─────────────────────────────────────────────────
+class FileRegister(BaseModel):
+    nom_original: str
+    type_mime: str
+    taille: int
+    cloudinary_url: str
+    public_id: str
+    folder_id: Optional[int] = None
+
+
 class FileOut(BaseModel):
     id: int
     nom_original: str
