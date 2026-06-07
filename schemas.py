@@ -4,11 +4,15 @@ from datetime import datetime
 
 
 # ── AUTH ──────────────────────────────────────────────────
+class OtpRequest(BaseModel):
+    email: str
+
 class UserRegister(BaseModel):
     email: str
     nom: str
     prenom: str
     password: str
+    otp: str
 
 
 class UserLogin(BaseModel):

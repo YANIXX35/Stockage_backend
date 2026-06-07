@@ -1,15 +1,87 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+import os
+import random
+import smtplib
+from datetime import datetime, timedelta
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+
 from database import get_db
 import models, schemas, auth as auth_utils
 
 router = APIRouter(prefix="/api/auth", tags=["Auth"])
+
+# In-memory OTP store: email -> {code, expires_at}
+_otp_store: dict[str, dict] = {}
+
+
+def _send_otp_email(to_email: str, code: str) -> None:
+    smtp_email = os.getenv("SMTP_EMAIL")
+    smtp_password = os.getenv("SMTP_PASSWORD")
+    if not smtp_email or not smtp_password:
+        raise RuntimeError("SMTP non configuré")
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = "Votre code de vérification — StorageApp"
+    msg["From"] = smtp_email
+    msg["To"] = to_email
+
+    html = f"""
+    <div style="font-family:Arial,sans-serif;max-width:420px;margin:0 auto;padding:24px;">
+      <h2 style="color:#6C63FF;margin-bottom:4px;">StorageApp</h2>
+      <p style="color:#555;">Voici votre code de vérification pour créer votre compte :</p>
+      <div style="font-size:2.2rem;font-weight:700;letter-spacing:12px;color:#6C63FF;
+                  padding:20px;background:#f4f3ff;text-align:center;border-radius:10px;
+                  margin:20px 0;">{code}</div>
+      <p style="color:#888;font-size:0.85rem;">Ce code expire dans <strong>10 minutes</strong>.
+         Ne le partagez avec personne.</p>
+    </div>
+    """
+    msg.attach(MIMEText(html, "html"))
+
+    with smtplib.SMTP("smtp.gmail.com", 587) as srv:
+        srv.starttls()
+        srv.login(smtp_email, smtp_password)
+        srv.sendmail(smtp_email, to_email, msg.as_string())
+
+
+@router.post("/send-otp")
+def send_otp(data: schemas.OtpRequest, db: Session = Depends(get_db)):
+    if db.query(models.User).filter(models.User.email == data.email).first():
+        raise HTTPException(status_code=400, detail="Email déjà utilisé")
+
+    code = str(random.randint(100000, 999999))
+    _otp_store[data.email] = {
+        "code": code,
+        "expires_at": datetime.utcnow() + timedelta(minutes=10),
+    }
+
+    try:
+        _send_otp_email(data.email, code)
+    except Exception:
+        raise HTTPException(status_code=500, detail="Impossible d'envoyer l'email. Vérifiez l'adresse.")
+
+    return {"message": "Code envoyé"}
 
 
 @router.post("/register", response_model=schemas.UserOut)
 def register(data: schemas.UserRegister, db: Session = Depends(get_db)):
     if db.query(models.User).filter(models.User.email == data.email).first():
         raise HTTPException(status_code=400, detail="Email déjà utilisé")
+
+    stored = _otp_store.get(data.email)
+    if not stored:
+        raise HTTPException(status_code=400, detail="Code OTP introuvable. Demandez un nouveau code.")
+    if stored["expires_at"] < datetime.utcnow():
+        _otp_store.pop(data.email, None)
+        raise HTTPException(status_code=400, detail="Code OTP expiré. Demandez un nouveau code.")
+    if stored["code"] != data.otp:
+        raise HTTPException(status_code=400, detail="Code OTP incorrect")
+
+    _otp_store.pop(data.email, None)
+
     user = models.User(
         email=data.email,
         nom=data.nom,
