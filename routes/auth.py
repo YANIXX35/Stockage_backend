@@ -115,6 +115,21 @@ def login(data: schemas.UserLogin, db: Session = Depends(get_db)):
         raise HTTPException(status_code=401, detail="Email ou mot de passe incorrect")
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Compte suspendu")
+
+    # Auto-promote le compte admin configuré (insensible à la casse)
+    first_admin = os.getenv("FIRST_ADMIN_EMAIL", "").strip().lower()
+    if first_admin and user.email.strip().lower() == first_admin:
+        admin_quota = 100 * 1024 * 1024 * 1024
+        changed = False
+        if not user.is_admin:
+            user.is_admin = True
+            changed = True
+        if user.quota_max < admin_quota:
+            user.quota_max = admin_quota
+            changed = True
+        if changed:
+            db.commit()
+
     token = auth_utils.create_access_token({"sub": str(user.id)})
     return {"access_token": token}
 

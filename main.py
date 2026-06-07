@@ -8,16 +8,27 @@ from routes import auth, files, folders, users, share
 
 Base.metadata.create_all(bind=engine)
 
+ADMIN_QUOTA = 100 * 1024 * 1024 * 1024  # 100 Go
+
 def _promote_first_admin():
-    email = os.getenv("FIRST_ADMIN_EMAIL")
+    email = os.getenv("FIRST_ADMIN_EMAIL", "").strip().lower()
     if not email:
         return
     db = SessionLocal()
     try:
-        user = db.query(models.User).filter(models.User.email == email).first()
-        if user and not user.is_admin:
-            user.is_admin = True
-            db.commit()
+        user = db.query(models.User).filter(
+            models.User.email.ilike(email)
+        ).first()
+        if user:
+            changed = False
+            if not user.is_admin:
+                user.is_admin = True
+                changed = True
+            if user.quota_max < ADMIN_QUOTA:
+                user.quota_max = ADMIN_QUOTA
+                changed = True
+            if changed:
+                db.commit()
     finally:
         db.close()
 
