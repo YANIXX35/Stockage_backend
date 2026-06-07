@@ -44,6 +44,7 @@ class File(Base):
     taille = Column(BigInteger, default=0)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     folder_id = Column(Integer, ForeignKey("folders.id"), nullable=True)
+    cloudinary_url = Column(String, nullable=True)
     is_deleted = Column(Boolean, default=False)
     deleted_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)

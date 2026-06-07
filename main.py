@@ -1,6 +1,7 @@
 import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 from database import engine, Base, SessionLocal
 import models
 
@@ -63,6 +64,12 @@ app.include_router(share.router)
 
 @app.on_event("startup")
 def on_startup():
+    # Ajout de la colonne cloudinary_url si elle n'existe pas encore
+    with engine.connect() as conn:
+        conn.execute(text(
+            "ALTER TABLE files ADD COLUMN IF NOT EXISTS cloudinary_url VARCHAR"
+        ))
+        conn.commit()
     _promote_first_admin()
 
 

@@ -1,6 +1,6 @@
 import os
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy.orm import Session
 from datetime import datetime
 from database import get_db
@@ -24,10 +24,14 @@ def download_shared(token: str, db: Session = Depends(get_db)):
     if not file:
         raise HTTPException(status_code=404, detail="Fichier introuvable")
 
+    # Cloudinary (nouveaux fichiers)
+    if file.cloudinary_url:
+        return RedirectResponse(url=file.cloudinary_url, status_code=302)
+
+    # Fallback disque local
     path = os.path.join("uploads", str(file.user_id), file.nom_stockage)
     if not os.path.exists(path):
-        raise HTTPException(status_code=404, detail="Fichier physique introuvable")
-
+        raise HTTPException(status_code=404, detail="Fichier introuvable sur le disque")
     return FileResponse(path=path, filename=file.nom_original, media_type=file.type_mime)
 
 
