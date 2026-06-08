@@ -1,5 +1,6 @@
 import logging
 import random
+import re
 import smtplib
 import os
 from datetime import datetime, timedelta
@@ -20,6 +21,12 @@ router = APIRouter(prefix="/api/auth", tags=["Auth"])
 # In-memory OTP stores (clés toujours en minuscules)
 _otp_store: dict[str, dict] = {}
 _reset_store: dict[str, dict] = {}
+
+_EMAIL_RE = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]{2,}$')
+
+
+def _valid_email(email: str) -> bool:
+    return bool(_EMAIL_RE.match(email))
 
 
 def _smtp_send(to_email: str, subject: str, html: str) -> None:
@@ -76,6 +83,8 @@ def _send_reset_email(to_email: str, code: str) -> None:
 @router.post("/send-otp")
 def send_otp(data: schemas.OtpRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     email = data.email.strip().lower()
+    if not _valid_email(email):
+        raise HTTPException(status_code=400, detail="Adresse email invalide")
     if db.query(models.User).filter(models.User.email == email).first():
         raise HTTPException(status_code=400, detail="Email déjà utilisé")
 
@@ -107,7 +116,7 @@ def register(data: schemas.UserRegister, db: Session = Depends(get_db)):
     _otp_store.pop(email, None)
 
     user = models.User(
-        email=email,          # stocké en minuscules
+        email=email,
         nom=data.nom.strip(),
         prenom=data.prenom.strip(),
         password_hash=auth_utils.hash_password(data.password),
@@ -123,14 +132,12 @@ def login(data: schemas.UserLogin, db: Session = Depends(get_db)):
     email = data.email.strip().lower()
     user = db.query(models.User).filter(models.User.email == email).first()
     if not user:
-        # Fallback insensible à la casse pour les comptes créés avant normalisation
         user = db.query(models.User).filter(models.User.email.ilike(email)).first()
     if not user or not auth_utils.verify_password(data.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Email ou mot de passe incorrect")
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Compte suspendu")
 
-    # Auto-promote le compte admin
     if user.email.strip().lower() == ADMIN_EMAIL:
         changed = False
         if not user.is_admin:
@@ -149,11 +156,12 @@ def login(data: schemas.UserLogin, db: Session = Depends(get_db)):
 @router.post("/forgot-password")
 def forgot_password(data: schemas.ForgotPasswordRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     email = data.email.strip().lower()
+    if not _valid_email(email):
+        raise HTTPException(status_code=400, detail="Adresse email invalide")
     user = db.query(models.User).filter(models.User.email == email).first()
     if not user:
         user = db.query(models.User).filter(models.User.email.ilike(email)).first()
     if not user:
-        # Ne pas révéler si l'email existe ou non
         return {"message": "Si cet email est enregistré, un code a été envoyé"}
 
     code = str(random.randint(100000, 999999))
@@ -185,12 +193,26 @@ def reset_password(data: schemas.ResetPasswordRequest, db: Session = Depends(get
 
     _reset_store.pop(email, None)
     user.password_hash = auth_utils.hash_password(data.new_password)
-    # Normalise l'email en minuscules pour les anciens comptes
     if user.email != email:
         user.email = email
     db.commit()
 
     return {"message": "Mot de passe réinitialisé avec succès"}
+
+
+@router.put("/change-password")
+def change_password(
+    data: schemas.ChangePasswordRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth_utils.get_current_user),
+):
+    if not auth_utils.verify_password(data.current_password, current_user.password_hash):
+        raise HTTPException(status_code=400, detail="Mot de passe actuel incorrect")
+    if len(data.new_password) < 6:
+        raise HTTPException(status_code=400, detail="Le nouveau mot de passe doit faire au moins 6 caractères")
+    current_user.password_hash = auth_utils.hash_password(data.new_password)
+    db.commit()
+    return {"message": "Mot de passe modifié avec succès"}
 
 
 @router.get("/me", response_model=schemas.UserOut)
