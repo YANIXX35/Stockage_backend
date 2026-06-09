@@ -82,3 +82,9 @@ def on_startup():
 @app.get("/")
 def root():
     return {"message": "StorageApp API is running", "docs": "/docs"}
+
+
+@app.get("/health")
+def health():
+    """Endpoint de santé ultra-léger — aucune requête SQL, sert uniquement au warmup Render."""
+    return {"status": "ok"}
