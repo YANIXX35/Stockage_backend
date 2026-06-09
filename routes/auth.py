@@ -215,6 +215,13 @@ def change_password(
     return {"message": "Mot de passe modifié avec succès"}
 
 
+@router.post("/refresh", response_model=schemas.Token)
+def refresh_token(current_user: models.User = Depends(auth_utils.get_current_user)):
+    """Renouvelle le token JWT pour un utilisateur authentifié — remet le compteur à 30 jours."""
+    token = auth_utils.create_access_token({"sub": str(current_user.id)})
+    return {"access_token": token}
+
+
 @router.get("/me", response_model=schemas.UserOut)
 def me(current_user: models.User = Depends(auth_utils.get_current_user)):
     return current_user
